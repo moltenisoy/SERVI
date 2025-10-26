@@ -30,15 +30,15 @@ ERRORS = [
     b'\xff\xff\xfe\x00', # deadline passed
 ]
 
+def _getPlayerNames(captain, more_players):
+    """Helper function to get comma-separated player names"""
+    return ','.join([x.name for x in [captain] + more_players])
+
 def getHomePlayerNames(match):
-    home_players = [match.teamSelection.home_captain]
-    home_players.extend(match.teamSelection.home_more_players)
-    return ','.join([x.name for x in home_players])
+    return _getPlayerNames(match.teamSelection.home_captain, match.teamSelection.home_more_players)
 
 def getAwayPlayerNames(match):
-    away_players = [match.teamSelection.away_captain]
-    away_players.extend(match.teamSelection.away_more_players)
-    return ','.join([x.name for x in away_players])
+    return _getPlayerNames(match.teamSelection.away_captain, match.teamSelection.away_more_players)
 
 
 class NewsProtocol(pes5.NewsProtocol):
@@ -197,6 +197,11 @@ class MainService(RosterHandler, pes5.MainService):
     and other important statistics.
     """
 
+    @staticmethod
+    def _get_total_matches(stats):
+        """Helper to calculate total matches from stats"""
+        return stats.wins + stats.losses + stats.draws
+
     @defer.inlineCallbacks
     def connectionLost(self, reason):
         pes5.LoginService.connectionLost(self, reason)
@@ -228,8 +233,7 @@ class MainService(RosterHandler, pes5.MainService):
             b'roomid': struct.pack('!i',roomId),
             b'points': struct.pack('!i',usr.profile.points),
             b'rating': struct.pack('!H',usr.profile.points),
-            b'matches': struct.pack('!H',
-                stats.wins + stats.losses + stats.draws),
+            b'matches': struct.pack('!H', self._get_total_matches(stats)),
             b'wins': struct.pack('!H',stats.wins),
             b'losses': struct.pack('!H',stats.losses),
             b'draws': struct.pack('!H',stats.draws),
@@ -260,8 +264,7 @@ class MainService(RosterHandler, pes5.MainService):
                     self.factory.ratingMath.getDivision(profile.points)),
                 b'points': struct.pack('!i',profile.points),
                 b'rating': struct.pack('!H',profile.rating),
-                b'matches': struct.pack('!H',
-                    stats.wins + stats.losses + stats.draws),
+                b'matches': struct.pack('!H', self._get_total_matches(stats)),
                 b'wins': struct.pack('!H',stats.wins),
                 b'losses': struct.pack('!H',stats.losses),
                 b'draws': struct.pack('!H',stats.draws),
