@@ -1,0 +1,99 @@
+Name: Fiveserver Configuration File
+Version: 1.8
+
+Comment: |
+    NOTE that GamePorts should not be changed, because the corresponding
+    games have those values hardcoded into them.
+
+ServerIP: auto
+ListenOn: ""
+IpDetectUrl: "https://mapote.com/cgi-bin/ip.py"
+
+Lobbies:
+    - name: 'ML Europeia'
+      checkRosterHash: False
+    - name: 'Champions League' 
+      checkRosterHash: False
+    - name: 'Copa Das Divisoes'
+      checkRosterHash: False
+    - name: 'Europa League'
+      checkRosterHash: False
+    - name: 'Serie A'
+      checkRosterHash: False
+    - name: 'Serie B'
+      checkRosterHash: False
+    - name: 'Conference League'
+      checkRosterHash: False
+    - name: 'ML Galera Play'
+      checkRosterHash: False
+    - name: 'Serie_A'
+      checkRosterHash: False
+    - name: 'Serie_B'
+      checkRosterHash: False
+
+GamePorts:
+    pes6: 10881
+    #we2007: 10881
+
+NetworkServer:
+    mainService: 20200
+    networkMenuService: 20201
+    loginService:
+        pes6: 20202
+        we2007: 20203
+
+WebInterface:
+    port: 8193
+
+Debug:
+    false
+
+DB:
+    name: sixserver
+    user: sixserver
+    password: proevo
+    readServers: [127.0.0.1]
+    writeServers: [127.0.0.1]
+    sharePool: True
+    ConnectionPool:
+        minConnections: 3
+        maxConnections: 5
+        keepAliveInterval: 60
+
+BannedList: ./etc/data/banned6.yaml
+
+Chat:
+    bannedWords: []
+    warningMessage: "message was removed because it contains banned words"
+
+Roster:
+    enforceHash: false
+    compareHash: true
+
+ComputeRanksInterval:
+    days: 1
+    seconds: 0
+
+StoreSettings: true
+
+ShowStats: true
+
+Disconnects:
+    CountAsLoss:
+        Enabled: true
+        Score:
+            player: 1
+            opponent: 1
+
+ServerName: "PES 6 ML Europeia"
+
+Greeting:
+    "text": "\
+Welcome to PES -\n\
+Server Pes 6 ML Europeia \n\
+supporting PES6/WE2007 games.\n\
+Have a good time, play some nice\n\
+football and try to score goals.\n\
+\n\
+Credits:dev Pedro Henrique\r\n\
+codigo fonte : juce & reddwarf"

@@ -1,0 +1,7 @@
+mysqlclient==2.1.1
+PyYAML
+Twisted==21.2.0
+pyOpenSSL
+pycryptodome
+zope.interface
+service-identity
