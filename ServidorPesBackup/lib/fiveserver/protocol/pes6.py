@@ -35,12 +35,10 @@ def _getPlayerNames(captain, more_players):
     return ','.join([x.name for x in [captain] + more_players])
 
 def getHomePlayerNames(match):
-    return _getPlayerNames(match.teamSelection.home_captain, 
-                          match.teamSelection.home_more_players)
+    return _getPlayerNames(match.teamSelection.home_captain, match.teamSelection.home_more_players)
 
 def getAwayPlayerNames(match):
-    return _getPlayerNames(match.teamSelection.away_captain, 
-                          match.teamSelection.away_more_players)
+    return _getPlayerNames(match.teamSelection.away_captain, match.teamSelection.away_more_players)
 
 
 class NewsProtocol(pes5.NewsProtocol):
