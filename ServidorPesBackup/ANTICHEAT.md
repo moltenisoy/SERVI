@@ -8,39 +8,57 @@ The implemented anti-cheat system provides comprehensive protection against mult
 
 ## Características / Features
 
-### 1. Protección contra Cheat Engine / Cheat Engine Protection
+### 1. Protección Mejorada contra Cheat Engine / Enhanced Cheat Engine Protection
 
 **Detecta y previene:**
 - Manipulación de valores de memoria (puntos, estadísticas, goles)
 - Valores imposibles o fuera de rango
 - Cambios sospechosos en estadísticas de jugador
+- Valores sospechosamente redondos (firma común de Cheat Engine)
+- Cambios frecuentes de valores (indicativo de escaneo de memoria)
+- Anomalías estadísticas en progresión de puntos
 
 **Detects and prevents:**
 - Memory value manipulation (points, stats, goals)
 - Impossible or out-of-range values
 - Suspicious changes in player statistics
+- Suspiciously round values (common Cheat Engine signature)
+- Frequent value changes (indicative of memory scanning)
+- Statistical anomalies in point progression
 
-**Implementación:**
+**Implementación mejorada / Enhanced implementation:**
 - Validación de rangos de valores en tiempo real
 - Seguimiento histórico de valores para detectar cambios anormales
 - Verificación de checksums de paquetes
+- Detección de frecuencia de cambios de valores
+- Análisis estadístico de progresión de puntos
+- Identificación de patrones de valores redondos
 
-### 2. Detección de Lag Intencional / Intentional Lag Detection
+### 2. Detección Mejorada de Lag Intencional / Enhanced Intentional Lag Detection
 
 **Detecta:**
 - Patrones de lag switch (alternancia rápida entre conexión rápida/lenta)
-- Spikes de latencia sospechosos
+- Spikes de latencia sospechosos y periódicos
 - Comportamiento de red inconsistente
+- Micro-lag acumulativo (pequeños retrasos que suman)
+- Lag estratégico en momentos críticos
+- Patrones de lag en ráfaga (burst lag)
 
 **Detects:**
 - Lag switch patterns (rapid alternation between fast/slow connection)
-- Suspicious latency spikes
+- Suspicious and periodic latency spikes
 - Inconsistent network behavior
+- Cumulative micro-lag (small delays that add up)
+- Strategic lag at critical moments
+- Burst lag patterns
 
-**Implementación:**
+**Implementación mejorada / Enhanced implementation:**
 - Análisis de temporización de paquetes
 - Detección de patrones alternantes
 - Puntuación de anomalías basada en comportamiento
+- Historial de spikes de lag con análisis temporal
+- Detección de micro-lag patterns
+- Identificación de lag periódico y estratégico
 
 ### 3. Verificación de Versión del Cliente / Client Version Verification
 
@@ -59,24 +77,36 @@ The implemented anti-cheat system provides comprehensive protection against mult
 - Lista configurable de versiones conocidas legítimas
 - Rechazo opcional de clientes desconocidos
 
-### 4. Monitoreo de Comportamiento de Red / Network Behavior Monitoring
+### 4. Monitoreo Mejorado de Comportamiento de Red / Enhanced Network Behavior Monitoring
 
 **Detecta:**
 - Limitadores de red artificiales
 - Throttling de ancho de banda
 - Patrones de spam de paquetes
 - Manipulación de conexión
+- **NUEVO:** Saturación de ancho de banda de subida (upload flooding)
+- **NUEVO:** Patrones de ráfaga en uploads
+- **NUEVO:** Anomalías de varianza de red (jitter excesivo)
+- **NUEVO:** Firmas de limitadores de red (patrones consistentes)
 
 **Detects:**
 - Artificial network limiters
 - Bandwidth throttling
 - Packet spam patterns
 - Connection manipulation
+- **NEW:** Upload bandwidth saturation (upload flooding)
+- **NEW:** Upload burst patterns
+- **NEW:** Network variance anomalies (excessive jitter)
+- **NEW:** Network limiter signatures (consistent patterns)
 
-**Implementación:**
+**Implementación mejorada / Enhanced implementation:**
 - Análisis de ancho de banda en tiempo real
 - Detección de patrones de envío de paquetes
 - Monitoreo de tamaño y frecuencia de paquetes
+- **Seguimiento específico de tráfico de subida**
+- **Análisis de jitter y varianza de red**
+- **Detección de patrones de ráfaga de uploads**
+- **Identificación de saturación de ancho de banda**
 
 ## Configuración / Configuration
 
@@ -112,8 +142,12 @@ The system assigns points for different types of violations:
 |-------------------------------------|-----------------|
 | Spam de paquetes / Packet spam | 10 |
 | Throttling de ancho de banda / Bandwidth throttling | 15 |
+| **NUEVO:** Anomalía de varianza de red / Network variance anomaly | 18 |
+| **NUEVO:** Saturación de subida / Upload saturation | 20 |
 | Lag switch detectado / Lag switch detected | 25 |
 | Versión de cliente desconocida / Unknown client version | 30 |
+| **NUEVO:** Anomalía estadística / Statistical anomaly | 30 |
+| **NUEVO:** Valores redondos sospechosos / Suspicious round points | 35 |
 | Integridad de memoria / Memory integrity | 40 |
 | Puntuación de partido imposible / Impossible match score | 40 |
 
