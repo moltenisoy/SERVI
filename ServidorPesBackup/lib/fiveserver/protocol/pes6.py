@@ -17,7 +17,7 @@ import zlib
 
 from fiveserver.model import packet, user, lobby, util
 from fiveserver.model.util import PacketFormatter
-from fiveserver import log, stream, errors
+from fiveserver import log, stream, errors, anticheat
 from fiveserver.protocol import PacketDispatcher, isSameGame
 from fiveserver.protocol import pes5
 
@@ -992,6 +992,29 @@ class MainService(RosterHandler, pes5.MainService):
         thisLobby = self.factory.getLobbies()[
             self._user.state.lobbyId]
         if thisLobby.typeCode != 0x20: # no-stats
+            # Anti-cheat: Validate match scores
+            if self._anticheat:
+                try:
+                    # Validate reasonable score ranges
+                    if (match.score_home < 0 or match.score_home > 99 or
+                        match.score_away < 0 or match.score_away > 99):
+                        log.msg(f'ANTICHEAT: Impossible match score detected: '
+                               f'{match.score_home}:{match.score_away}')
+                        self._anticheat.record_violation(
+                            self._user.hash, 'impossible_match_score')
+                        # Skip storing this match
+                        defer.returnValue(None)
+                        return
+                    
+                    # Validate match duration (should be reasonable)
+                    duration_seconds = duration.total_seconds()
+                    if duration_seconds < 60 or duration_seconds > 7200:
+                        log.msg(f'ANTICHEAT: Suspicious match duration: {duration_seconds}s')
+                        self._anticheat.record_violation(
+                            self._user.hash, 'suspicious_match_duration')
+                except Exception as e:
+                    log.msg(f'ANTICHEAT: Error validating match: {e}')
+            
             # record the match in DB
             yield self.factory.matchData.store(match)
             participants = [match.teamSelection.home_captain,
@@ -1004,6 +1027,22 @@ class MainService(RosterHandler, pes5.MainService):
                 # re-calculate points
                 profile.apoints = profile.points
                 stats = yield self.getStats(profile.id)
+                
+                # Anti-cheat: Validate stats before updating points
+                if self._anticheat:
+                    try:
+                        game_values = {
+                            'points': profile.points,
+                            'goals_scored': stats.goals_scored,
+                            'goals_allowed': stats.goals_allowed
+                        }
+                        if not self._anticheat.validate_game_state(
+                            profile.userId if hasattr(profile, 'userId') else str(profile.id),
+                            game_values):
+                            log.msg(f'ANTICHEAT: Game state validation failed for profile {profile.name}')
+                    except Exception as e:
+                        log.msg(f'ANTICHEAT: Error validating game state: {e}')
+                
                 rm = self.factory.ratingMath
                 profile.points = rm.getPoints(stats)
                 # store updated profile
