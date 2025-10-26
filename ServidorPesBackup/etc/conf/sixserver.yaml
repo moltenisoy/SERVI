@@ -85,6 +85,15 @@ Disconnects:
             player: 1
             opponent: 1
 
+AntiCheat:
+    enabled: true
+    ban_threshold: 100
+    reject_unknown_clients: false
+    # Known legitimate client hashes can be added here
+    # known_client_hashes:
+    #   - "hash1"
+    #   - "hash2"
+
 ServerName: "PES 6 ML Europeia"
 
 Greeting:
