@@ -1,32 +1,40 @@
 # Anti-Cheat Implementation Summary
 
 ## Overview
-This implementation adds comprehensive anti-cheat protection to the SERVI PES5/PES6 game server, addressing all requirements from the issue.
+This implementation adds comprehensive and **enhanced** anti-cheat protection to the SERVI PES5/PES6 game server, addressing all requirements from the issue with **improved robustness**.
 
 ## Requirements Met
 
-### ✓ 1. Protection Against Cheat Engine
+### ✓ 1. Enhanced Protection Against Cheat Engine
 **Implementation:**
 - `MemoryIntegrityMonitor` class validates game values
 - Detects impossible values (points, goals, scores)
 - Tracks value changes to identify suspicious modifications
 - Validates match scores (0-99 range)
 - Checks player statistics for anomalies
+- **NEW:** Detects suspiciously round values (common Cheat Engine signature)
+- **NEW:** Tracks value change frequency to identify memory scanning
+- **NEW:** Statistical anomaly detection in point progression
+- **NEW:** Baseline comparison for abnormal value jumps
 
 **Files:**
-- `lib/fiveserver/anticheat.py` (lines 170-251)
+- `lib/fiveserver/anticheat.py` (lines 170-290)
 - `lib/fiveserver/protocol/pes5.py` (lines 411-450)
 
-### ✓ 2. Detection of Intentional Lag
+### ✓ 2. Enhanced Detection of Intentional Lag
 **Implementation:**
 - `PacketTimingAnalyzer` class monitors packet timing
 - Detects lag spike patterns (>2 seconds threshold)
 - Identifies lag switch behavior (alternating fast/slow)
 - Calculates anomaly scores for suspicious patterns
 - Automatic violation recording
+- **NEW:** Micro-lag pattern detection (cumulative small delays)
+- **NEW:** Periodic lag spike identification
+- **NEW:** Strategic lag detection (burst patterns)
+- **NEW:** Lag spike history tracking with temporal analysis
 
 **Files:**
-- `lib/fiveserver/anticheat.py` (lines 17-107)
+- `lib/fiveserver/anticheat.py` (lines 17-155)
 - `lib/fiveserver/protocol/__init__.py` (lines 72-88)
 
 ### ✓ 3. Protection Against Modified Game Versions
@@ -40,16 +48,21 @@ This implementation adds comprehensive anti-cheat protection to the SERVI PES5/P
 - `lib/fiveserver/anticheat.py` (lines 110-167)
 - `lib/fiveserver/protocol/pes5.py` (lines 229-244)
 
-### ✓ 4. Network Limiter Detection
+### ✓ 4. Enhanced Network Manager and Upload Saturation Detection
 **Implementation:**
 - `NetworkBehaviorMonitor` tracks bandwidth usage
 - Detects artificial throttling (<1KB/s)
 - Identifies packet spam patterns
 - Real-time bandwidth analysis
 - Connection manipulation detection
+- **NEW:** Upload bandwidth saturation detection (>50KB/s threshold)
+- **NEW:** Upload burst pattern detection
+- **NEW:** Network jitter and variance analysis
+- **NEW:** Network limiter signature detection (consistent low patterns)
+- **NEW:** Coefficient of variation analysis for connection stability
 
 **Files:**
-- `lib/fiveserver/anticheat.py` (lines 254-324)
+- `lib/fiveserver/anticheat.py` (lines 235-370)
 
 ## Architecture
 
@@ -109,8 +122,12 @@ This implementation adds comprehensive anti-cheat protection to the SERVI PES5/P
 |----------------|----------|--------|
 | Packet spam | Low | 10 |
 | Bandwidth throttling | Medium | 15 |
+| **Network variance anomaly** | **Medium** | **18** |
+| **Upload saturation** | **Medium-High** | **20** |
 | Lag switch pattern | Medium-High | 25 |
 | Unknown client version | High | 30 |
+| **Statistical anomaly** | **High** | **30** |
+| **Suspicious round points** | **High** | **35** |
 | Memory manipulation | Critical | 40 |
 | Impossible match score | Critical | 40 |
 

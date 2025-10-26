@@ -21,13 +21,20 @@ class PacketTimingAnalyzer:
     such as intentional lag or network manipulation
     """
     
-    def __init__(self, window_size=100, lag_threshold=2.0):
+    def __init__(self, window_size=100, lag_threshold=2.0, config=None):
         self.window_size = window_size
         self.lag_threshold = lag_threshold  # seconds
         self.packet_times = []
         self.response_times = []
         self.last_packet_time = None
         self.anomaly_count = 0
+        self.lag_spike_history = []
+        self.micro_lag_patterns = []
+        
+        # Configurable thresholds
+        self.config = config or {}
+        self.periodic_spike_variance_threshold = self.config.get(
+            'periodic_spike_variance_threshold', 0.04)  # (20% CV)^2 = 0.04
         
     def record_packet(self, packet_id):
         """Record incoming packet timestamp"""
@@ -44,7 +51,23 @@ class PacketTimingAnalyzer:
             # Detect suspicious patterns
             if time_delta > self.lag_threshold:
                 self.anomaly_count += 1
+                self.lag_spike_history.append({
+                    'time': current_time,
+                    'duration': time_delta,
+                    'packet_id': packet_id
+                })
                 log.msg(f'ANTICHEAT: Suspicious lag detected: {time_delta:.2f}s (packet: 0x{packet_id:04x})')
+            
+            # Detect micro-lag patterns (rapid small delays that sum up)
+            if 0.5 < time_delta < 1.5:
+                self.micro_lag_patterns.append(current_time)
+                # Keep only recent micro-lags
+                cutoff = current_time - 30
+                self.micro_lag_patterns = [t for t in self.micro_lag_patterns if t > cutoff]
+                
+                # If too many micro-lags in short period
+                if len(self.micro_lag_patterns) > 10:
+                    log.msg(f'ANTICHEAT: Micro-lag pattern detected (possible lag manipulation)')
         
         self.last_packet_time = current_time
         
@@ -67,7 +90,15 @@ class PacketTimingAnalyzer:
         """
         if len(self.packet_times) < 20:
             return False
-            
+        
+        # Clean old lag spike history
+        current_time = time.time()
+        cutoff = current_time - 300  # 5 minutes
+        self.lag_spike_history = [
+            spike for spike in self.lag_spike_history 
+            if spike['time'] > cutoff
+        ]
+        
         # Check for alternating fast/slow pattern (lag switch behavior)
         alternating_count = 0
         for i in range(1, min(20, len(self.packet_times))):
@@ -78,7 +109,40 @@ class PacketTimingAnalyzer:
         if alternating_count > 3:
             log.msg('ANTICHEAT: Lag switch pattern detected!')
             return True
+        
+        # Check for periodic lag spikes (another lag switch signature)
+        if len(self.lag_spike_history) >= 5:
+            spike_times = [spike['time'] for spike in self.lag_spike_history[-5:]]
+            intervals = [spike_times[i+1] - spike_times[i] for i in range(len(spike_times)-1)]
+            avg_interval = sum(intervals) / len(intervals) if intervals else 0
             
+            # If spikes occur at regular intervals (within configurable variance threshold)
+            if avg_interval > 0:
+                variance = sum((x - avg_interval) ** 2 for x in intervals) / len(intervals)
+                if variance / (avg_interval ** 2) < self.periodic_spike_variance_threshold:
+                    log.msg('ANTICHEAT: Periodic lag spike pattern detected!')
+                    return True
+            
+        return False
+    
+    def detect_strategic_lag(self):
+        """
+        Detect lag that occurs at strategically important moments
+        This is harder to detect but we can look for patterns
+        Returns True if suspicious strategic lag detected
+        """
+        if len(self.lag_spike_history) < 3:
+            return False
+        
+        # Check if lag spikes cluster together (burst lag)
+        recent_spikes = [spike for spike in self.lag_spike_history[-10:]]
+        if len(recent_spikes) >= 3:
+            spike_times = [spike['time'] for spike in recent_spikes]
+            # If multiple spikes within 10 seconds
+            if spike_times[-1] - spike_times[0] < 10:
+                log.msg('ANTICHEAT: Burst lag pattern detected!')
+                return True
+        
         return False
     
     def get_anomaly_score(self):
@@ -97,6 +161,14 @@ class PacketTimingAnalyzer:
         # Lag spike pattern
         if self.detect_lag_spike_pattern():
             score += 40
+        
+        # Strategic lag detection
+        if self.detect_strategic_lag():
+            score += 35
+        
+        # Micro-lag pattern
+        if len(self.micro_lag_patterns) > 10:
+            score += 25
             
         # Inconsistent timing variance
         if len(self.packet_times) >= 10:
@@ -174,9 +246,17 @@ class MemoryIntegrityMonitor:
     Uses packet checksums and expected value validation
     """
     
-    def __init__(self):
+    def __init__(self, config=None):
         self.value_history = {}
         self.checksum_failures = {}
+        self.value_change_frequency = {}
+        self.statistical_baseline = {}
+        
+        # Configurable thresholds
+        self.config = config or {}
+        self.round_value_threshold = self.config.get('round_value_threshold', 100000)
+        self.statistical_anomaly_multiplier = self.config.get('statistical_anomaly_multiplier', 2)
+        self.statistical_anomaly_min_points = self.config.get('statistical_anomaly_min_points', 10000)
         
     def validate_game_values(self, user_hash, values_dict):
         """
@@ -192,6 +272,10 @@ class MemoryIntegrityMonitor:
             if points < 0 or points > 999999999:
                 violations.append('impossible_points_value')
                 log.msg(f'ANTICHEAT: Impossible points value detected: {points}')
+            # Detect suspiciously round numbers (common Cheat Engine signature)
+            elif points > 0 and points % self.round_value_threshold == 0 and points > self.round_value_threshold:
+                violations.append('suspicious_round_points')
+                log.msg(f'ANTICHEAT: Suspiciously round points value: {points}')
         
         if 'goals_scored' in values_dict:
             goals = values_dict['goals_scored']
@@ -209,11 +293,83 @@ class MemoryIntegrityMonitor:
                 if point_change > 1000:
                     violations.append('suspicious_point_change')
                     log.msg(f'ANTICHEAT: Suspicious point change: {point_change}')
+                
+                # Track frequency of value changes (rapid changes = possible memory scanning)
+                self._track_value_change_frequency(user_hash, 'points')
+        
+        # Detect statistical anomalies
+        if self._detect_statistical_anomaly(user_hash, values_dict):
+            violations.append('statistical_anomaly')
         
         # Store current values for future comparison
         self.value_history[user_hash] = values_dict.copy()
         
         return len(violations) == 0, violations
+    
+    def _track_value_change_frequency(self, user_hash, value_name):
+        """
+        Track how frequently values are changing
+        Frequent changes may indicate memory scanning with Cheat Engine
+        """
+        if user_hash not in self.value_change_frequency:
+            self.value_change_frequency[user_hash] = {}
+        
+        if value_name not in self.value_change_frequency[user_hash]:
+            self.value_change_frequency[user_hash][value_name] = {
+                'count': 0,
+                'last_change': time.time(),
+                'changes': []
+            }
+        
+        freq_data = self.value_change_frequency[user_hash][value_name]
+        current_time = time.time()
+        freq_data['count'] += 1
+        freq_data['changes'].append(current_time)
+        
+        # Keep only changes in last 5 minutes
+        cutoff = current_time - 300
+        freq_data['changes'] = [t for t in freq_data['changes'] if t > cutoff]
+        
+        # If more than 20 changes in 5 minutes, suspicious
+        if len(freq_data['changes']) > 20:
+            log.msg(f'ANTICHEAT: Rapid value changes detected for {user_hash}: {value_name}')
+            return True
+        
+        return False
+    
+    def _detect_statistical_anomaly(self, user_hash, values_dict):
+        """
+        Use statistical analysis to detect anomalous patterns
+        Returns True if anomaly detected
+        """
+        if user_hash not in self.statistical_baseline:
+            self.statistical_baseline[user_hash] = {
+                'points_history': [],
+                'goals_history': []
+            }
+        
+        baseline = self.statistical_baseline[user_hash]
+        
+        # Track points progression
+        if 'points' in values_dict:
+            points = values_dict['points']
+            baseline['points_history'].append(points)
+            
+            # Keep only recent history
+            if len(baseline['points_history']) > 50:
+                baseline['points_history'].pop(0)
+            
+            # Detect sudden jumps that deviate from normal progression
+            if len(baseline['points_history']) >= 10:
+                recent = baseline['points_history'][-10:]
+                avg = sum(recent) / len(recent)
+                
+                # If current value is way outside normal range (configurable multiplier)
+                if points > avg * self.statistical_anomaly_multiplier and points > self.statistical_anomaly_min_points:
+                    log.msg(f'ANTICHEAT: Statistical anomaly in points for {user_hash}')
+                    return True
+        
+        return False
     
     def verify_packet_checksum(self, user_hash, packet, expected_checksum):
         """
@@ -238,10 +394,17 @@ class NetworkBehaviorMonitor:
     limiters, or other network-level cheating
     """
     
-    def __init__(self):
+    def __init__(self, config=None):
         self.connection_stats = {}
         self.packet_counts = {}
         self.bandwidth_samples = {}
+        self.upload_pattern_history = {}
+        self.jitter_samples = {}
+        
+        # Configurable thresholds
+        self.config = config or {}
+        self.upload_saturation_threshold = self.config.get('upload_saturation_threshold', 51200)  # 50KB/s
+        self.network_variance_cv_threshold = self.config.get('network_variance_cv_threshold', 2.0)
         
     def record_packet_size(self, user_hash, packet_size):
         """Record packet size for bandwidth analysis"""
@@ -249,18 +412,120 @@ class NetworkBehaviorMonitor:
             self.bandwidth_samples[user_hash] = {
                 'sizes': [],
                 'timestamps': [],
-                'start_time': time.time()
+                'start_time': time.time(),
+                'upload_sizes': [],
+                'upload_timestamps': []
             }
         
         stats = self.bandwidth_samples[user_hash]
+        current_time = time.time()
         stats['sizes'].append(packet_size)
-        stats['timestamps'].append(time.time())
+        stats['timestamps'].append(current_time)
+        
+        # Track upload bandwidth specifically for saturation detection
+        if packet_size > 100:  # Only count substantial packets as uploads
+            stats['upload_sizes'].append(packet_size)
+            stats['upload_timestamps'].append(current_time)
         
         # Keep only recent samples (last 60 seconds)
-        cutoff_time = time.time() - 60
+        cutoff_time = current_time - 60
         while stats['timestamps'] and stats['timestamps'][0] < cutoff_time:
             stats['timestamps'].pop(0)
             stats['sizes'].pop(0)
+        
+        # Clean upload samples
+        while stats['upload_timestamps'] and stats['upload_timestamps'][0] < cutoff_time:
+            stats['upload_timestamps'].pop(0)
+            stats['upload_sizes'].pop(0)
+        
+        # Record jitter for variance analysis
+        self._record_jitter(user_hash, current_time)
+    
+    def _record_jitter(self, user_hash, current_time):
+        """Record packet arrival jitter for network quality analysis"""
+        if user_hash not in self.jitter_samples:
+            self.jitter_samples[user_hash] = {
+                'intervals': [],
+                'last_time': current_time
+            }
+            return
+        
+        jitter_data = self.jitter_samples[user_hash]
+        interval = current_time - jitter_data['last_time']
+        jitter_data['intervals'].append(interval)
+        jitter_data['last_time'] = current_time
+        
+        # Keep only recent samples
+        if len(jitter_data['intervals']) > 100:
+            jitter_data['intervals'].pop(0)
+    
+    def detect_upload_saturation(self, user_hash):
+        """
+        Detect intentional upload bandwidth saturation
+        Returns True if saturation pattern detected
+        """
+        if user_hash not in self.bandwidth_samples:
+            return False
+        
+        stats = self.bandwidth_samples[user_hash]
+        
+        if len(stats['upload_sizes']) < 10:
+            return False
+        
+        # Calculate upload bytes per second
+        total_upload = sum(stats['upload_sizes'])
+        time_span = stats['upload_timestamps'][-1] - stats['upload_timestamps'][0]
+        
+        if time_span <= 0:
+            return False
+        
+        upload_bps = total_upload / time_span
+        
+        # Detect suspiciously high upload rates (potential saturation attack)
+        # Typical game traffic should be < 50KB/s (configurable threshold)
+        if upload_bps > self.upload_saturation_threshold:
+            log.msg(f'ANTICHEAT: Upload saturation detected for {user_hash}: {upload_bps:.2f} B/s')
+            return True
+        
+        # Check for burst patterns (alternating high/low upload)
+        if len(stats['upload_sizes']) >= 20:
+            recent_uploads = stats['upload_sizes'][-20:]
+            avg_size = sum(recent_uploads) / len(recent_uploads)
+            bursts = sum(1 for size in recent_uploads if size > avg_size * 3)
+            if bursts > 10:
+                log.msg(f'ANTICHEAT: Upload burst pattern detected for {user_hash}')
+                return True
+        
+        return False
+    
+    def detect_network_variance_anomaly(self, user_hash):
+        """
+        Detect anomalous network variance patterns that may indicate
+        manipulation of network conditions
+        Returns True if suspicious variance detected
+        """
+        if user_hash not in self.jitter_samples:
+            return False
+        
+        intervals = self.jitter_samples[user_hash]['intervals']
+        
+        if len(intervals) < 20:
+            return False
+        
+        # Calculate variance in packet intervals
+        mean_interval = sum(intervals) / len(intervals)
+        variance = sum((x - mean_interval) ** 2 for x in intervals) / len(intervals)
+        std_dev = variance ** 0.5
+        
+        # High coefficient of variation indicates unstable connection
+        # which could be artificial (configurable threshold)
+        if mean_interval > 0:
+            cv = std_dev / mean_interval
+            if cv > self.network_variance_cv_threshold:
+                log.msg(f'ANTICHEAT: High network variance detected for {user_hash}: CV={cv:.2f}')
+                return True
+        
+        return False
     
     def detect_bandwidth_throttling(self, user_hash):
         """
@@ -288,6 +553,16 @@ class NetworkBehaviorMonitor:
         if bytes_per_second < 1024:
             log.msg(f'ANTICHEAT: Bandwidth throttling detected for {user_hash}: {bytes_per_second:.2f} B/s')
             return True
+        
+        # Check for consistent low-bandwidth pattern (network limiter signature)
+        if len(stats['sizes']) >= 30:
+            recent_samples = stats['sizes'][-30:]
+            avg_size = sum(recent_samples) / len(recent_samples)
+            # If all packets are suspiciously similar size, may indicate limiting
+            size_variance = sum((x - avg_size) ** 2 for x in recent_samples) / len(recent_samples)
+            if avg_size < 200 and size_variance < 100:
+                log.msg(f'ANTICHEAT: Network limiter signature detected for {user_hash}')
+                return True
             
         return False
     
@@ -318,11 +593,11 @@ class AntiCheatSystem:
         self.config = config or {}
         self.enabled = self.config.get('enabled', True)
         
-        # Initialize subsystems
+        # Initialize subsystems with configuration
         self.timing_analyzer = {}  # per-user
         self.integrity_checker = ClientIntegrityChecker()
-        self.memory_monitor = MemoryIntegrityMonitor()
-        self.network_monitor = NetworkBehaviorMonitor()
+        self.memory_monitor = MemoryIntegrityMonitor(config=self.config)
+        self.network_monitor = NetworkBehaviorMonitor(config=self.config)
         
         # Violation tracking
         self.user_violations = {}
@@ -333,7 +608,7 @@ class AntiCheatSystem:
     def get_timing_analyzer(self, user_hash):
         """Get or create timing analyzer for user"""
         if user_hash not in self.timing_analyzer:
-            self.timing_analyzer[user_hash] = PacketTimingAnalyzer()
+            self.timing_analyzer[user_hash] = PacketTimingAnalyzer(config=self.config)
         return self.timing_analyzer[user_hash]
     
     def on_packet_received(self, user_hash, packet):
@@ -355,6 +630,14 @@ class AntiCheatSystem:
         # Check for bandwidth throttling
         if self.network_monitor.detect_bandwidth_throttling(user_hash):
             self.record_violation(user_hash, 'bandwidth_throttling')
+        
+        # Check for upload saturation attacks
+        if self.network_monitor.detect_upload_saturation(user_hash):
+            self.record_violation(user_hash, 'upload_saturation')
+        
+        # Check for network variance anomalies
+        if self.network_monitor.detect_network_variance_anomaly(user_hash):
+            self.record_violation(user_hash, 'network_variance_anomaly')
         
         return True
     
@@ -403,8 +686,12 @@ class AntiCheatSystem:
         severity_map = {
             'packet_spam': 10,
             'bandwidth_throttling': 15,
+            'upload_saturation': 20,
+            'network_variance_anomaly': 18,
             'client_version': 30,
             'memory_integrity': 40,
+            'suspicious_round_points': 35,
+            'statistical_anomaly': 30,
             'lag_switch': 25
         }
         
