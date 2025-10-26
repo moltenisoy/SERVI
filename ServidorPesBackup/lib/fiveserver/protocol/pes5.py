@@ -17,7 +17,7 @@ import zlib
 
 from fiveserver.model import packet, user, lobby, util
 from fiveserver.model.util import PacketFormatter
-from fiveserver import log, stream, errors
+from fiveserver import log, stream, errors, anticheat
 from fiveserver.protocol import PacketDispatcher, isSameGame
 
 
@@ -146,6 +146,15 @@ class LoginService(PacketDispatcher):
 
     def connectionMade(self):
         PacketDispatcher.connectionMade(self)
+        
+        # Initialize anti-cheat system
+        try:
+            anticheat_config = self.factory.serverConfig.get('AntiCheat', {})
+            self._anticheat = anticheat.get_anticheat_system(anticheat_config)
+        except Exception as e:
+            log.msg(f'Warning: Failed to initialize anti-cheat: {e}')
+            self._anticheat = None
+        
         # check banned list
         banned = self.factory.configuration.isBanned(self.addr.host)
         if banned:
@@ -161,6 +170,12 @@ class LoginService(PacketDispatcher):
     def connectionLost(self, reason):
         PacketDispatcher.connectionLost(self, reason)
         if self._user:
+            # Clean up anti-cheat tracking
+            if self._anticheat:
+                try:
+                    self._anticheat.cleanup_user(self._user.hash)
+                except Exception as e:
+                    log.msg(f'Warning: Anti-cheat cleanup error: {e}')
             # user now considered OFFLINE
             self.factory.userOffline(self._user)
 
@@ -212,6 +227,20 @@ class LoginService(PacketDispatcher):
             log.msg('This user is: {%s} (profiles: %s)' % (
                     self._user.hash,
                     ','.join([x.name for x in self._user.profiles])))
+            
+            # Anti-cheat: Verify client version
+            if self._anticheat and clientRosterHash:
+                is_valid, reason = self._anticheat.verify_client_version(
+                    self._user.hash, clientRosterHash)
+                if not is_valid:
+                    log.msg(f'ANTICHEAT: Client verification failed for {self._user.hash}: {reason}')
+                    # Optionally reject based on configuration
+                    anticheat_config = self.factory.serverConfig.get('AntiCheat', {})
+                    if anticheat_config.get('reject_unknown_clients', False):
+                        self.sendData(0x3004,struct.pack('!I',0xffffff12))
+                        defer.returnValue(None)
+                        return
+            
             if self.factory.isUserOnline(self._user):
                 # already logged in
                 log.msg('User already logged in!')
@@ -380,6 +409,30 @@ class LoginService(PacketDispatcher):
                     thisLobby = self.factory.getLobbies()[
                         self._user.state.lobbyId]
                     if thisLobby.typeCode != 0x20: # no-stats
+                        # Anti-cheat: Validate match scores
+                        if self._anticheat:
+                            try:
+                                # Validate reasonable score ranges
+                                if (match.score_home < 0 or match.score_home > 99 or
+                                    match.score_away < 0 or match.score_away > 99):
+                                    log.msg(f'ANTICHEAT: Impossible match score detected: '
+                                           f'{match.score_home}:{match.score_away}')
+                                    self._anticheat.record_violation(
+                                        self._user.hash, 'impossible_match_score')
+                                    # Skip storing this match
+                                    yield defer.succeed(None)
+                                    defer.returnValue(None)
+                                    return
+                                
+                                # Validate match duration (should be reasonable)
+                                duration_seconds = duration.total_seconds()
+                                if duration_seconds < 60 or duration_seconds > 7200:
+                                    log.msg(f'ANTICHEAT: Suspicious match duration: {duration_seconds}s')
+                                    self._anticheat.record_violation(
+                                        self._user.hash, 'suspicious_match_duration')
+                            except Exception as e:
+                                log.msg(f'ANTICHEAT: Error validating match: {e}')
+                        
                         # record the match in DB
                         yield self.factory.matchData.store(match)
                         # update player play time
@@ -390,6 +443,24 @@ class LoginService(PacketDispatcher):
                             self.getStats(match.home_profile.id),
                             self.getStats(match.away_profile.id)])
                         (_,home_stats), (_,away_stats) = results
+                        
+                        # Anti-cheat: Validate stats before updating points
+                        if self._anticheat:
+                            try:
+                                for profile, stats in [(match.home_profile, home_stats), 
+                                                       (match.away_profile, away_stats)]:
+                                    game_values = {
+                                        'points': profile.points,
+                                        'goals_scored': stats.goals_scored,
+                                        'goals_allowed': stats.goals_allowed
+                                    }
+                                    if not self._anticheat.validate_game_state(
+                                        profile.userId if hasattr(profile, 'userId') else str(profile.id),
+                                        game_values):
+                                        log.msg(f'ANTICHEAT: Game state validation failed for profile {profile.name}')
+                            except Exception as e:
+                                log.msg(f'ANTICHEAT: Error validating game state: {e}')
+                        
                         rm = self.factory.ratingMath
                         match.home_profile.points = rm.getPoints(home_stats)
                         match.away_profile.points = rm.getPoints(away_stats)

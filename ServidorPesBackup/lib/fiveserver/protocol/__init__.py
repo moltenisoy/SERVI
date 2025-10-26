@@ -7,7 +7,7 @@ import time
 
 from fiveserver.model import packet
 from fiveserver.model.util import PacketFormatter
-from fiveserver import log, stream, errors
+from fiveserver import log, stream, errors, anticheat
 
 
 def isSameGame(factory, userA, userB):
@@ -39,6 +39,7 @@ class PacketReceiver(Protocol):
         #print dir(self)
         self._recvd = b""
         self._count = 1
+        self._anticheat = None
 
     def connectionLost(self, reason):
         log.msg('Connection lost: %s' % reason.getErrorMessage())
@@ -77,6 +78,20 @@ class PacketReceiver(Protocol):
                 username = ''            
             log.debug('[RECV {%s}]: %s' % (
                 username, PacketFormatter.format(pkt)))
+
+        # Anti-cheat packet monitoring
+        if self._anticheat and hasattr(self, '_user') and self._user:
+            try:
+                user_hash = self._user.hash
+                self._anticheat.on_packet_received(user_hash, pkt)
+                
+                # Check if user should be banned
+                if self._anticheat.should_ban_user(user_hash):
+                    log.msg(f'ANTICHEAT: Disconnecting user {user_hash} due to violations')
+                    self.transport.loseConnection()
+                    return
+            except Exception as e:
+                log.msg(f'ANTICHEAT: Error in packet monitoring: {e}')
 
         # handle heartbeat packet here, since it's the same
         # across all types of servers
