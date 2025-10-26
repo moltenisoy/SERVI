@@ -93,6 +93,14 @@ AntiCheat:
     # known_client_hashes:
     #   - "hash1"
     #   - "hash2"
+    
+    # Advanced detection thresholds (optional, defaults shown)
+    # upload_saturation_threshold: 51200      # Upload bandwidth threshold in B/s (50KB/s)
+    # network_variance_cv_threshold: 2.0      # Coefficient of variation for network jitter
+    # round_value_threshold: 100000           # Threshold for suspicious round numbers
+    # statistical_anomaly_multiplier: 2       # Multiplier for statistical anomaly detection
+    # statistical_anomaly_min_points: 10000   # Minimum points for statistical analysis
+    # periodic_spike_variance_threshold: 0.04 # Variance threshold for periodic lag spikes
 
 ServerName: "PES 6 ML Europeia"
 

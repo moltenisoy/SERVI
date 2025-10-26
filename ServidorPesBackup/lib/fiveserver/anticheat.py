@@ -21,7 +21,7 @@ class PacketTimingAnalyzer:
     such as intentional lag or network manipulation
     """
     
-    def __init__(self, window_size=100, lag_threshold=2.0):
+    def __init__(self, window_size=100, lag_threshold=2.0, config=None):
         self.window_size = window_size
         self.lag_threshold = lag_threshold  # seconds
         self.packet_times = []
@@ -30,6 +30,11 @@ class PacketTimingAnalyzer:
         self.anomaly_count = 0
         self.lag_spike_history = []
         self.micro_lag_patterns = []
+        
+        # Configurable thresholds
+        self.config = config or {}
+        self.periodic_spike_variance_threshold = self.config.get(
+            'periodic_spike_variance_threshold', 0.04)  # (20% CV)^2 = 0.04
         
     def record_packet(self, packet_id):
         """Record incoming packet timestamp"""
@@ -111,10 +116,10 @@ class PacketTimingAnalyzer:
             intervals = [spike_times[i+1] - spike_times[i] for i in range(len(spike_times)-1)]
             avg_interval = sum(intervals) / len(intervals) if intervals else 0
             
-            # If spikes occur at regular intervals (within 20% variance)
+            # If spikes occur at regular intervals (within configurable variance threshold)
             if avg_interval > 0:
                 variance = sum((x - avg_interval) ** 2 for x in intervals) / len(intervals)
-                if variance / (avg_interval ** 2) < 0.04:  # 20% coefficient of variation
+                if variance / (avg_interval ** 2) < self.periodic_spike_variance_threshold:
                     log.msg('ANTICHEAT: Periodic lag spike pattern detected!')
                     return True
             
@@ -241,11 +246,17 @@ class MemoryIntegrityMonitor:
     Uses packet checksums and expected value validation
     """
     
-    def __init__(self):
+    def __init__(self, config=None):
         self.value_history = {}
         self.checksum_failures = {}
         self.value_change_frequency = {}
         self.statistical_baseline = {}
+        
+        # Configurable thresholds
+        self.config = config or {}
+        self.round_value_threshold = self.config.get('round_value_threshold', 100000)
+        self.statistical_anomaly_multiplier = self.config.get('statistical_anomaly_multiplier', 2)
+        self.statistical_anomaly_min_points = self.config.get('statistical_anomaly_min_points', 10000)
         
     def validate_game_values(self, user_hash, values_dict):
         """
@@ -262,7 +273,7 @@ class MemoryIntegrityMonitor:
                 violations.append('impossible_points_value')
                 log.msg(f'ANTICHEAT: Impossible points value detected: {points}')
             # Detect suspiciously round numbers (common Cheat Engine signature)
-            elif points > 0 and points % 100000 == 0 and points > 100000:
+            elif points > 0 and points % self.round_value_threshold == 0 and points > self.round_value_threshold:
                 violations.append('suspicious_round_points')
                 log.msg(f'ANTICHEAT: Suspiciously round points value: {points}')
         
@@ -353,8 +364,8 @@ class MemoryIntegrityMonitor:
                 recent = baseline['points_history'][-10:]
                 avg = sum(recent) / len(recent)
                 
-                # If current value is way outside normal range
-                if points > avg * 2 and points > 10000:
+                # If current value is way outside normal range (configurable multiplier)
+                if points > avg * self.statistical_anomaly_multiplier and points > self.statistical_anomaly_min_points:
                     log.msg(f'ANTICHEAT: Statistical anomaly in points for {user_hash}')
                     return True
         
@@ -383,12 +394,17 @@ class NetworkBehaviorMonitor:
     limiters, or other network-level cheating
     """
     
-    def __init__(self):
+    def __init__(self, config=None):
         self.connection_stats = {}
         self.packet_counts = {}
         self.bandwidth_samples = {}
         self.upload_pattern_history = {}
         self.jitter_samples = {}
+        
+        # Configurable thresholds
+        self.config = config or {}
+        self.upload_saturation_threshold = self.config.get('upload_saturation_threshold', 51200)  # 50KB/s
+        self.network_variance_cv_threshold = self.config.get('network_variance_cv_threshold', 2.0)
         
     def record_packet_size(self, user_hash, packet_size):
         """Record packet size for bandwidth analysis"""
@@ -466,8 +482,8 @@ class NetworkBehaviorMonitor:
         upload_bps = total_upload / time_span
         
         # Detect suspiciously high upload rates (potential saturation attack)
-        # Typical game traffic should be < 50KB/s
-        if upload_bps > 51200:  # 50KB/s threshold
+        # Typical game traffic should be < 50KB/s (configurable threshold)
+        if upload_bps > self.upload_saturation_threshold:
             log.msg(f'ANTICHEAT: Upload saturation detected for {user_hash}: {upload_bps:.2f} B/s')
             return True
         
@@ -502,10 +518,10 @@ class NetworkBehaviorMonitor:
         std_dev = variance ** 0.5
         
         # High coefficient of variation indicates unstable connection
-        # which could be artificial
+        # which could be artificial (configurable threshold)
         if mean_interval > 0:
             cv = std_dev / mean_interval
-            if cv > 2.0:  # Very high variation
+            if cv > self.network_variance_cv_threshold:
                 log.msg(f'ANTICHEAT: High network variance detected for {user_hash}: CV={cv:.2f}')
                 return True
         
@@ -577,11 +593,11 @@ class AntiCheatSystem:
         self.config = config or {}
         self.enabled = self.config.get('enabled', True)
         
-        # Initialize subsystems
+        # Initialize subsystems with configuration
         self.timing_analyzer = {}  # per-user
         self.integrity_checker = ClientIntegrityChecker()
-        self.memory_monitor = MemoryIntegrityMonitor()
-        self.network_monitor = NetworkBehaviorMonitor()
+        self.memory_monitor = MemoryIntegrityMonitor(config=self.config)
+        self.network_monitor = NetworkBehaviorMonitor(config=self.config)
         
         # Violation tracking
         self.user_violations = {}
@@ -592,7 +608,7 @@ class AntiCheatSystem:
     def get_timing_analyzer(self, user_hash):
         """Get or create timing analyzer for user"""
         if user_hash not in self.timing_analyzer:
-            self.timing_analyzer[user_hash] = PacketTimingAnalyzer()
+            self.timing_analyzer[user_hash] = PacketTimingAnalyzer(config=self.config)
         return self.timing_analyzer[user_hash]
     
     def on_packet_received(self, user_hash, packet):

@@ -123,14 +123,31 @@ AntiCheat:
     # known_client_hashes:
     #   - "hash_del_cliente_legitimo_1"
     #   - "hash_del_cliente_legitimo_2"
+    
+    # Umbrales de detección avanzada (opcional, se muestran los valores por defecto)
+    # upload_saturation_threshold: 51200      # Umbral de ancho de banda de subida en B/s (50KB/s)
+    # network_variance_cv_threshold: 2.0      # Coeficiente de variación para jitter de red
+    # round_value_threshold: 100000           # Umbral para números redondos sospechosos
+    # statistical_anomaly_multiplier: 2       # Multiplicador para detección de anomalías estadísticas
+    # statistical_anomaly_min_points: 10000   # Puntos mínimos para análisis estadístico
+    # periodic_spike_variance_threshold: 0.04 # Umbral de varianza para spikes de lag periódicos
 ```
 
-### Parámetros / Parameters
+### Parámetros Básicos / Basic Parameters
 
 - **`enabled`**: Activa o desactiva el sistema completo (default: `true`)
 - **`ban_threshold`**: Puntuación de violaciones necesaria para ban automático (default: `100`)
 - **`reject_unknown_clients`**: Si es `true`, rechaza clientes con hashes desconocidos (default: `false`)
 - **`known_client_hashes`**: Lista opcional de hashes MD5 de clientes legítimos conocidos
+
+### Parámetros Avanzados / Advanced Parameters
+
+- **`upload_saturation_threshold`**: Umbral de bytes/segundo para detectar saturación de subida (default: `51200` = 50KB/s)
+- **`network_variance_cv_threshold`**: Coeficiente de variación para detectar jitter anómalo (default: `2.0`)
+- **`round_value_threshold`**: Valor múltiplo para detectar puntos redondos sospechosos (default: `100000`)
+- **`statistical_anomaly_multiplier`**: Multiplicador sobre el promedio para detectar saltos anormales (default: `2`)
+- **`statistical_anomaly_min_points`**: Puntos mínimos antes de aplicar análisis estadístico (default: `10000`)
+- **`periodic_spike_variance_threshold`**: Umbral de varianza para detectar lag periódico (default: `0.04`)
 
 ## Sistema de Puntuación / Scoring System
 
