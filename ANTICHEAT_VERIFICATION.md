@@ -24,7 +24,7 @@ PES6 inherits all anti-cheat functionality from PES5 through proper class inheri
 
 ### 3. Anti-Cheat Initialization ✅
 
-**Inherited from**: `pes5.LoginService.connectionMade()` (lines 148-156)
+**Inherited from**: `pes5.LoginService.connectionMade()` (lines 151-156)
 
 The initialization code in PES5:
 ```python
@@ -44,7 +44,7 @@ def connectionMade(self):
 
 ### 4. Anti-Cheat Cleanup ✅
 
-**File**: `pes6.py`, `MainService.connectionLost()` (line 207)
+**File**: `pes6.py`, `MainService.connectionLost()` (lines 206-217)
 
 ```python
 def connectionLost(self, reason):
@@ -80,7 +80,7 @@ if self._anticheat and clientRosterHash:
 
 ### 6. Match Score Validation ✅
 
-**File**: `pes6.py`, `MainService.recordMatchResult()` (lines 998-1019)
+**File**: `pes6.py`, `MainService.recordMatchResult()` (lines 999-1019)
 
 ```python
 # Anti-cheat: Validate match scores
@@ -114,7 +114,7 @@ if self._anticheat:
 
 ### 7. Game State Validation ✅
 
-**File**: `pes6.py`, `MainService.recordMatchResult()` (lines 1034-1047)
+**File**: `pes6.py`, `MainService.recordMatchResult()` (lines 1035-1047)
 
 ```python
 # Anti-cheat: Validate stats before updating points
