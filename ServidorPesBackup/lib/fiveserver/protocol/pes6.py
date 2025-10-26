@@ -1003,7 +1003,6 @@ class MainService(RosterHandler, pes5.MainService):
                         self._anticheat.record_violation(
                             self._user.hash, 'impossible_match_score')
                         # Skip storing this match
-                        yield defer.succeed(None)
                         defer.returnValue(None)
                         return
                     
